@@ -26,13 +26,21 @@ get_catalog_meps <-
 
 			search_result <- strsplit( RCurl::getURL( search_page , ssl.verifypeer = FALSE ) , "(\r)?\n" )[[1]]
 			
+			puf_search_result_table <- grep( "PUF Search Results" , search_result )
+			
+			table_closures <- grep( "/table" , search_result )
+			
+			stopifnot( length( puf_search_result_table ) == 1 )
+			
+			search_result <- search_result[ seq( puf_search_result_table , min( table_closures[ table_closures > puf_search_result_table ] ) ) ]
+			
 			tf <- tempfile()
 
 			writeLines( search_result , tf )
 
-			available_pufs <- rvest::html_table( xml2::read_html( tf ) , fill = TRUE )[[11]]
+			available_pufs <- rvest::html_table( xml2::read_html( tf ) , fill = TRUE )[[1]]
 
-			available_pufs <- available_pufs[ grepl( "^HC" , available_pufs$X1 ) , ]
+			available_pufs <- available_pufs[ grepl( "^HC" , available_pufs[ , 1 ] ) , ]
 
 			names( available_pufs ) <- c( "table_id" , "file_name" , "data_update" , "year" , "file_type" )
 			
@@ -88,8 +96,9 @@ get_catalog_meps <-
 lodown_meps <-
 	function( data_name = "meps" , catalog , ... ){
 
-		tf <- tempfile()
+		on.exit( print( catalog ) )
 
+		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
 			
@@ -111,7 +120,7 @@ lodown_meps <-
 
 					catalog[ i , 'case_count' ] <- nrow( x )
 					
-					saveRDS( x , file = catalog[ i , 'output_filename' ] )
+					saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 				} , silent = TRUE )
 				
 			if( class( import_result ) == 'try-error' ) cat( paste0( data_name , " catalog entry " , i , " of " , nrow( catalog ) , " failed.'\r\n\n" ) )
@@ -123,6 +132,8 @@ lodown_meps <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

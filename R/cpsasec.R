@@ -1,7 +1,7 @@
 get_catalog_cpsasec <-
 	function( data_name = "cpsasec" , output_dir , ... ){
 
-		cps_ftp <- "http://thedataweb.rm.census.gov/ftp/cps_ftp.html#cpsmarch"
+		cps_ftp <- "https://thedataweb.rm.census.gov/ftp/cps_ftp.html#cpsmarch"
 
 		cps_links <- rvest::html_attr( rvest::html_nodes( xml2::read_html( cps_ftp ) , "a" ) , "href" )
 		
@@ -13,8 +13,9 @@ get_catalog_cpsasec <-
 		
 		catalog <-
 			data.frame(
-				year = asec_years ,
-				output_filename = file.path( output_dir , paste0( asec_years , " cps asec.rds" ) ) ,
+				production_file = c( rep( TRUE , length( asec_years ) ) , FALSE , FALSE ) ,
+				year = c( asec_years , 2017 , 2018 ) ,
+				output_filename = file.path( output_dir , paste0( c( asec_years , '2017 research' , '2018 bridge' ) , " cps asec.rds" ) ) ,
 				stringsAsFactors = FALSE
 			)
 
@@ -24,6 +25,8 @@ get_catalog_cpsasec <-
 		# overwrite 2014.58 with three-eights
 		catalog$output_filename <- gsub( "\\.58" , "_5x8" , catalog$output_filename )
 
+		catalog <- catalog[ order( catalog[ , 'year' ] ) , ]
+		
 		catalog
 
 	}
@@ -31,6 +34,8 @@ get_catalog_cpsasec <-
 
 lodown_cpsasec <-
 	function( data_name = "cpsasec" , catalog , ... ){
+
+		on.exit( print( catalog ) )
 
 		tf <- tempfile()
 
@@ -43,14 +48,128 @@ lodown_cpsasec <-
 			# this process is slow.
 			# for example, the CPS ASEC 2011 file has 204,983 person-records.
 
+			if( catalog[ i , 'year' ] >= 2019 ){
+				
+				td <- tempdir()
+				
+				cachaca( paste0( "https://thedataweb.rm.census.gov/pub/cps/march/asecpub" , substr( catalog[ i , 'year' ] , 3 , 4 ) , "sas.zip" ) , tf , mode = 'wb' , filesize_fun = 'unzip_verify' )
+
+				asec_files <- unzip( tf , exdir = td )
+				
+				prsn <- data.frame( haven::read_sas( grep( 'pppub' , asec_files , value = TRUE ) ) )
+				fmly <- data.frame( haven::read_sas( grep( 'ffpub' , asec_files , value = TRUE ) ) )
+				hhld <- data.frame( haven::read_sas( grep( 'hhpub' , asec_files , value = TRUE ) ) )
+				
+				names( fmly ) <- tolower( names( fmly ) )
+				for ( j in names( fmly ) ) fmly[ , j ] <- as.numeric( fmly[ , j ] )
+				fmly$fsup_wgt <- fmly$fsup_wgt / 100
+				
+				number_of_records <- nrow( prsn )
+				names( prsn ) <- tolower( names( prsn ) )
+				for ( j in names( prsn ) ) prsn[ , j ] <- as.numeric( prsn[ , j ] )
+				for ( j in c( 'marsupwt' , 'a_ernlwt' , 'a_fnlwgt' ) ) prsn[ , j ] <- prsn[ , j ] / 100
+				names( fmly )[ names( fmly ) == 'fh_seq' ] <- 'h_seq'
+				names( prsn )[ names( prsn ) == 'ph_seq' ] <- 'h_seq'
+				names( prsn )[ names( prsn ) == 'phf_seq' ] <- 'ffpos'
+				x <- merge( fmly , prsn )
+				rm( fmly , prsn )
+
+				names( hhld ) <- tolower( names( hhld ) )
+				for ( j in setdiff( names( hhld ) , 'h_idnum' ) ) hhld[ , j ] <- as.numeric( hhld[ , j ] )
+				hhld$hsup_wgt <- hhld$hsup_wgt / 100
+				x <- merge( hhld , x )
+				rm( hhld )
+				
+				names( x ) <- toupper( names( x ) )
+				
+				stopifnot( nrow( x ) == number_of_records )
+
+				file.remove( asec_files , tf )
+
+
+			} else if( !( catalog[ i , 'production_file' ] ) & ( catalog[ i , 'year' ] == 2017 ) ){
+
+				tf1 <- tempfile() ; tf2 <- tempfile() ; tf3 <- tempfile()
+			
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2017/cps-asec-research-file/hhpub17_010919.sas7bdat" , tf1 , mode = 'wb' , filesize_fun = 'sas_verify' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2017/cps-asec-research-file/ffpub17_010919.sas7bdat" , tf2 , mode = 'wb' , filesize_fun = 'sas_verify' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2017/cps-asec-research-file/pppub17.sas7bdat" , tf3 , mode = 'wb' , filesize_fun = 'sas_verify' )
+
+				fmly <- data.frame( haven::read_sas( tf2 ) )
+				names( fmly ) <- tolower( names( fmly ) )
+				for ( j in names( fmly ) ) fmly[ , j ] <- as.numeric( fmly[ , j ] )
+				fmly$fsup_wgt <- fmly$fsup_wgt / 100
+				file.remove( tf2 )
+				
+				prsn <- data.frame( haven::read_sas( tf3 ) )
+				number_of_records <- nrow( prsn )
+				names( prsn ) <- tolower( names( prsn ) )
+				for ( j in names( prsn ) ) prsn[ , j ] <- as.numeric( prsn[ , j ] )
+				for ( j in c( 'marsupwt' , 'a_ernlwt' , 'a_fnlwgt' ) ) prsn[ , j ] <- prsn[ , j ] / 100
+				names( fmly )[ names( fmly ) == 'fh_seq' ] <- 'h_seq'
+				names( prsn )[ names( prsn ) == 'ph_seq' ] <- 'h_seq'
+				names( prsn )[ names( prsn ) == 'phf_seq' ] <- 'ffpos'
+				x <- merge( fmly , prsn )
+				rm( fmly , prsn ) ; gc() ; file.remove( tf3 )
+
+				hhld <- data.frame( haven::read_sas( tf1 ) )
+				names( hhld ) <- tolower( names( hhld ) )
+				for ( j in names( hhld ) ) hhld[ , j ] <- as.numeric( hhld[ , j ] )
+				hhld$hsup_wgt <- hhld$hsup_wgt / 100
+				x <- merge( hhld , x )
+				rm( hhld ) ; gc() ; file.remove( tf1 )
+				
+				names( x ) <- toupper( names( x ) )
+				
+				stopifnot( nrow( x ) == number_of_records )
+
+				
+			} else if( !( catalog[ i , 'production_file' ] ) & ( catalog[ i , 'year' ] == 2018 ) ){
+
+				tf1 <- tempfile() ; tf2 <- tempfile() ; tf3 <- tempfile()
+			
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2018/cps-asec-bridge-file/hhpub18_bridge.sas7bdat" , tf1 , mode = 'wb' , filesize_fun = 'sas_verify' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2018/cps-asec-bridge-file/ffpub18_bridge.sas7bdat" , tf2 , mode = 'wb' , filesize_fun = 'sas_verify' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2018/cps-asec-bridge-file/ppub18_bridge.sas7bdat" , tf3 , mode = 'wb' , filesize_fun = 'sas_verify' )
+
+				
+				fmly <- data.frame( haven::read_sas( tf2 ) )
+				names( fmly ) <- tolower( names( fmly ) )
+				for ( j in names( fmly ) ) fmly[ , j ] <- as.numeric( fmly[ , j ] )
+				fmly$fsup_wgt <- fmly$fsup_wgt / 100
+				file.remove( tf2 )
+				
+				prsn <- data.frame( haven::read_sas( tf3 ) )
+				number_of_records <- nrow( prsn )
+				names( prsn ) <- tolower( names( prsn ) )
+				for ( j in names( prsn ) ) prsn[ , j ] <- as.numeric( prsn[ , j ] )
+				for ( j in c( 'marsupwt' , 'a_ernlwt' , 'a_fnlwgt' ) ) prsn[ , j ] <- prsn[ , j ] / 100
+				names( fmly )[ names( fmly ) == 'fh_seq' ] <- 'h_seq'
+				names( prsn )[ names( prsn ) == 'ph_seq' ] <- 'h_seq'
+				names( prsn )[ names( prsn ) == 'phf_seq' ] <- 'ffpos'
+				x <- merge( fmly , prsn )
+				rm( fmly , prsn ) ; gc() ; file.remove( tf3 )
+
+				hhld <- data.frame( haven::read_sas( tf1 ) )
+				names( hhld ) <- tolower( names( hhld ) )
+				for ( j in names( hhld ) ) hhld[ , j ] <- as.numeric( hhld[ , j ] )
+				hhld$hsup_wgt <- hhld$hsup_wgt / 100
+				x <- merge( hhld , x )
+				rm( hhld ) ; gc() ; file.remove( tf1 )
+				
+				names( x ) <- toupper( names( x ) )
+				
+				stopifnot( nrow( x ) == number_of_records )
+
+
 			# for the 2014 cps, load the income-consistent file as the full-catalog[ i , 'year' ] extract
-			if ( catalog[ i , 'year' ] == 2014 ){
+			} else if ( catalog[ i , 'year' ] == 2014 ){
 				
 				tf1 <- tempfile() ; tf2 <- tempfile() ; tf3 <- tempfile()
 			
-				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/hhld.sas7bdat" , tf1 , mode = 'wb' , filesize_fun = 'httr' )
-				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/family.sas7bdat" , tf2 , mode = 'wb' , filesize_fun = 'httr' )
-				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/person.sas7bdat" , tf3 , mode = 'wb' , filesize_fun = 'httr' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/hhld.sas7bdat" , tf1 , mode = 'wb' , filesize_fun = 'sas_verify' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/family.sas7bdat" , tf2 , mode = 'wb' , filesize_fun = 'sas_verify' )
+				cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/person.sas7bdat" , tf3 , mode = 'wb' , filesize_fun = 'sas_verify' )
 
 				
 				fmly <- data.frame( haven::read_sas( tf2 ) )
@@ -90,24 +209,24 @@ lodown_cpsasec <-
 					ifelse( 
 						# if the catalog[ i , 'year' ] to download is 2007, the filename doesn't match the others..
 						catalog[ i , 'year' ] == 2007 ,
-						"http://thedataweb.rm.census.gov/pub/cps/march/asec2007_pubuse_tax2.zip" ,
+						"https://thedataweb.rm.census.gov/pub/cps/march/asec2007_pubuse_tax2.zip" ,
 						ifelse(
 							catalog[ i , 'year' ] %in% 2004:2003 ,
-							paste0( "http://thedataweb.rm.census.gov/pub/cps/march/asec" , catalog[ i , 'year' ] , ".zip" ) ,
+							paste0( "https://thedataweb.rm.census.gov/pub/cps/march/asec" , catalog[ i , 'year' ] , ".zip" ) ,
 							ifelse(
 								catalog[ i , 'year' ] %in% 2002:1998 ,
-								paste0( "http://thedataweb.rm.census.gov/pub/cps/march/mar" , substr( catalog[ i , 'year' ] , 3 , 4 ) , "supp.zip" ) ,
+								paste0( "https://thedataweb.rm.census.gov/pub/cps/march/mar" , substr( catalog[ i , 'year' ] , 3 , 4 ) , "supp.zip" ) ,
 								ifelse( 
 									catalog[ i , 'year' ] == 2014.38 ,
-									"http://thedataweb.rm.census.gov/pub/cps/march/asec2014_pubuse_3x8_rerun_v2.zip" ,
+									"https://thedataweb.rm.census.gov/pub/cps/march/asec2014_pubuse_3x8_rerun_v2.zip" ,
 									ifelse( 
 										catalog[ i , 'year' ] == 2014.58 ,
-										"http://thedataweb.rm.census.gov/pub/cps/march/asec2014_pubuse_tax_fix_5x8_2017.zip" ,
+										"https://thedataweb.rm.census.gov/pub/cps/march/asec2014_pubuse_tax_fix_5x8_2017.zip" ,
 										ifelse( catalog[ i , 'year' ] == 2016 ,
-											paste0( "http://thedataweb.rm.census.gov/pub/cps/march/asec" , catalog[ i , 'year' ] , "_pubuse_v3.zip" ) ,
-											# ifelse( catalog[ i , 'year' ] == 2017 ,
-												# "http://thedataweb.rm.census.gov/pub/cps/march/asec2017early_pubuse.zip" ,
-												paste0( "http://thedataweb.rm.census.gov/pub/cps/march/asec" , catalog[ i , 'year' ] , "_pubuse.zip" )
+											paste0( "https://thedataweb.rm.census.gov/pub/cps/march/asec" , catalog[ i , 'year' ] , "_pubuse_v3.zip" ) ,
+											# ifelse( catalog[ i , 'year' ] == 2018 ,
+												# "https://thedataweb.rm.census.gov/pub/cps/march/asec2018early_pubuse.zip" ,
+												paste0( "https://thedataweb.rm.census.gov/pub/cps/march/asec" , catalog[ i , 'year' ] , "_pubuse.zip" )
 											# )
 										)
 									)
@@ -133,14 +252,14 @@ lodown_cpsasec <-
 
 				} else {
 					
-					if( catalog[ i , 'year' ] >= 2017 ) sas_ris <- cpsasec_dd_parser( paste0( "http://thedataweb.rm.census.gov/pub/cps/march/08ASEC" , catalog[ i , 'year' ] , "_Data_Dict_Full.txt" ) )
-					if( catalog[ i , 'year' ] == 2016 ) sas_ris <- cpsasec_dd_parser( paste0( "http://thedataweb.rm.census.gov/pub/cps/march/Asec2016_Data_Dict_Full.txt" ) )
-					if( catalog[ i , 'year' ] == 2015 ) sas_ris <- cpsasec_dd_parser( "http://thedataweb.rm.census.gov/pub/cps/march/asec2015early_pubuse.dd.txt" )
-					if( catalog[ i , 'year' ] == 2014.38 ) sas_ris <- cpsasec_dd_parser( "http://thedataweb.rm.census.gov/pub/cps/march/asec2014R_pubuse.dd.txt" )
-					if( catalog[ i , 'year' ] == 2014.58 ) sas_ris <- cpsasec_dd_parser( "http://thedataweb.rm.census.gov/pub/cps/march/asec2014early_pubuse.dd.txt" )
-					if( catalog[ i , 'year' ] == 2013 ) sas_ris <- cpsasec_dd_parser( "http://thedataweb.rm.census.gov/pub/cps/march/asec2013early_pubuse.dd.txt" )
-					if( catalog[ i , 'year' ] == 2012 ) sas_ris <- cpsasec_dd_parser( "http://thedataweb.rm.census.gov/pub/cps/march/asec2012early_pubuse.dd.txt" )
-					if( catalog[ i , 'year' ] == 2011 ) sas_ris <- cpsasec_dd_parser( "http://thedataweb.rm.census.gov/pub/cps/march/asec2011_pubuse.dd.txt" )
+					if( catalog[ i , 'year' ] >= 2017 ) sas_ris <- cpsasec_dd_parser( paste0( "https://thedataweb.rm.census.gov/pub/cps/march/08ASEC" , catalog[ i , 'year' ] , "_Data_Dict_Full.txt" ) )
+					if( catalog[ i , 'year' ] == 2016 ) sas_ris <- cpsasec_dd_parser( paste0( "https://thedataweb.rm.census.gov/pub/cps/march/Asec2016_Data_Dict_Full.txt" ) )
+					if( catalog[ i , 'year' ] == 2015 ) sas_ris <- cpsasec_dd_parser( "https://thedataweb.rm.census.gov/pub/cps/march/asec2015early_pubuse.dd.txt" )
+					if( catalog[ i , 'year' ] == 2014.38 ) sas_ris <- cpsasec_dd_parser( "https://thedataweb.rm.census.gov/pub/cps/march/asec2014R_pubuse.dd.txt" )
+					if( catalog[ i , 'year' ] == 2014.58 ) sas_ris <- cpsasec_dd_parser( "https://thedataweb.rm.census.gov/pub/cps/march/asec2014early_pubuse.dd.txt" )
+					if( catalog[ i , 'year' ] == 2013 ) sas_ris <- cpsasec_dd_parser( "https://thedataweb.rm.census.gov/pub/cps/march/asec2013early_pubuse.dd.txt" )
+					if( catalog[ i , 'year' ] == 2012 ) sas_ris <- cpsasec_dd_parser( "https://thedataweb.rm.census.gov/pub/cps/march/asec2012early_pubuse.dd.txt" )
+					if( catalog[ i , 'year' ] == 2011 ) sas_ris <- cpsasec_dd_parser( "https://thedataweb.rm.census.gov/pub/cps/march/asec2011_pubuse.dd.txt" )
 
 				}
 					
@@ -148,7 +267,7 @@ lodown_cpsasec <-
 				tf <- tempfile() ; td <- tempdir()
 
 				# download the CPS repwgts zipped file to the local computer
-				cachaca( CPS.ASEC.mar.file.location , tf , mode = "wb" , filesize_fun = 'httr' )
+				cachaca( CPS.ASEC.mar.file.location , tf , mode = "wb" )
 
 				# unzip the file's contents and store the file name within the temporary directory
 				fn <- unzip( tf , exdir = td , overwrite = TRUE )
@@ -162,8 +281,8 @@ lodown_cpsasec <-
 				
 				# create four file connections.
 
-				# one read-only file connection "r" - pointing to the ASCII file
-				incon <- file( fn , "r") 
+				# one read-only file connection "rb" - pointing to the ASCII file
+				incon <- file( fn , "rb") 
 
 				# three write-only file connections "w" - pointing to the household, family, and person files
 				outcon.household <- file( tf.household , "w") 
@@ -348,9 +467,7 @@ lodown_cpsasec <-
 				
 			# tack on _anycov_ variables
 			# tack on _outtyp_ variables
-			if( catalog[ i , 'year' ] > 2013 ){
-				
-				stopifnot( catalog[ i , 'year' ] %in% c( 2017 , 2016 , 2015 , 2014.58 , 2014.38 , 2014 ) )
+			if( ( catalog[ i , 'production_file' ] ) & ( catalog[ i , 'year' ] %in% c( 2018 , 2017 , 2016 , 2015 , 2014.58 , 2014.38 , 2014 ) ) ){
 				
 				tf <- tempfile()
 				
@@ -362,7 +479,7 @@ lodown_cpsasec <-
 					
 					ace <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/asec14_now_anycov.dat"
 
-					cachaca( ace , tf , mode = "wb" , filesize_fun = 'httr' )	
+					download.file( ace , tf , mode = "wb" )	
 
 					ac <- rbind( ac , data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 1 ) ) , col_types = 'nnn' ) ) )
 					
@@ -372,7 +489,7 @@ lodown_cpsasec <-
 					
 					ace <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/asec14_now_anycov_redes.dat"
 
-					cachaca( ace , tf , mode = "wb" , filesize_fun = 'httr' )	
+					download.file( ace , tf , mode = "wb" )	
 
 					ac <- rbind( ac , data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 1 ) ) , col_types = 'nnn' ) ) )
 					
@@ -382,11 +499,11 @@ lodown_cpsasec <-
 				
 					ote <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/asec14_outtyp_full.dat"
 					
-					cachaca( ote , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ote , tf , mode = 'wb' )
 					
 					ot <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 2 , 1 ) ) , col_types = 'nnnn' ) )
 					
-					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/ppint14esi_offer_ext.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'httr' )
+					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/ppint14esi_offer_ext.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
 					
 					offer <- data.frame( haven::read_sas( tf ) )
 					
@@ -397,17 +514,17 @@ lodown_cpsasec <-
 				
 					ote <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/asec15_outtyp.dat"
 				
-					cachaca( ote , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ote , tf , mode = 'wb' )
 					
 					ot <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 2 , 1 ) ) , col_types = 'nnnn' ) )
 					
 					ace <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/asec15_currcov_extract.dat"
 				
-					cachaca( ace , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ace , tf , mode = 'wb' )
 					
 					ac <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 1 ) ) , col_types = 'nnn' ) )
 
-					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/ppint15esi_offer_ext.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'httr' )
+					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/ppint15esi_offer_ext.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
 					
 					offer <- data.frame( haven::read_sas( tf ) )
 				
@@ -417,17 +534,17 @@ lodown_cpsasec <-
 				
 					ote <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2016/cps-redesign/asec16_outtyp_full.dat"
 				
-					cachaca( ote , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ote , tf , mode = 'wb' )
 					
 					ot <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 2 , 1 ) ) , col_types = 'nnnn' ) )
 					
 					ace <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2016/cps-redesign/asec16_currcov_extract.dat"
 				
-					cachaca( ace , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ace , tf , mode = 'wb' )
 					
 					ac <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 1 ) ) , col_types = 'nnn' ) )
 
-					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/pubuse_esioffer_2016.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'httr' )
+					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2014/cps-redesign/pubuse_esioffer_2016.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
 					
 					offer <- data.frame( haven::read_sas( tf ) )
 				
@@ -437,22 +554,41 @@ lodown_cpsasec <-
 				
 					ote <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2017/cps-redesign/asec17_outtyp_extract.dat"
 				
-					cachaca( ote , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ote , tf , mode = 'wb' )
 					
 					ot <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 2 , 1 ) ) , col_types = 'nnnn' ) )
 					
 					ace <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2017/cps-redesign/asec17_currcov_extract.dat"
 				
-					cachaca( ace , tf , mode = 'wb' , filesize_fun = 'httr' )
+					download.file( ace , tf , mode = 'wb' )
 					
 					ac <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 1 ) ) , col_types = 'nnn' ) )
 
-					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2017/cps-redesign/pubuse_esioffer_2017.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'httr' )
+					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2017/cps-redesign/pubuse_esioffer_2017.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
 					
 					offer <- data.frame( haven::read_sas( tf ) )
 				
 				}
 				
+				if ( catalog[ i , 'year' ] %in% 2018 ){
+				
+					ote <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2018/cps-redesign/asec18_outtyp_extract.dat"
+				
+					download.file( ote , tf , mode = 'wb' )
+					
+					ot <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 2 , 1 ) ) , col_types = 'nnnn' ) )
+					
+					ace <- "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2018/cps-redesign/asec18_currcov_extract.dat"
+				
+					download.file( ace , tf , mode = 'wb' )
+					
+					ac <- data.frame( readr::read_fwf( tf , readr::fwf_widths( c( 5 , 2 , 1 ) ) , col_types = 'nnn' ) )
+
+					cachaca( "https://www2.census.gov/programs-surveys/demo/datasets/health-insurance/2018/cps-redesign/pubuse_esioffer_2018.sas7bdat" , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
+					
+					offer <- data.frame( haven::read_sas( tf ) )
+				
+				}
 				names( ot ) <- c( 'ph_seq' , 'ppposold' , 'outtyp' , 'i_outtyp' )
 				
 				names( ac ) <- c( 'ph_seq' , 'ppposold' , 'census_anycov' )
@@ -489,21 +625,30 @@ lodown_cpsasec <-
 				# census.gov website containing the current population survey's replicate weights file
 				CPS.replicate.weight.file.location <- 
 					ifelse(
-						catalog[ i , 'year' ] == 2014.38 ,
-						"https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/weights/cps-asec-ascii-repwgt-2014-redes.dat" ,
+						!( catalog[ i , 'production_file' ] ) & catalog[ i , 'year' ] == 2017 ,
+						"https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2017/cps-asec-research-file/repwgt_2017.sas7bdat" ,
 						ifelse(
-							catalog[ i , 'year' ] == 2014 ,
-							"https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/weights/cps-asec-ascii-repwgt-2014-fullsample.dat" ,
-							paste0( 
-								"http://thedataweb.rm.census.gov/pub/cps/march/CPS_ASEC_ASCII_REPWGT_" , 
-								substr( catalog[ i , 'year' ] , 1 , 4 ) , 
-								".zip" 
+							!( catalog[ i , 'production_file' ] ) & catalog[ i , 'year' ] == 2018 ,
+							"https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/data-extracts/2018/cps-asec-bridge-file/repwgt_2018.sas7bdat" ,
+							ifelse(
+								catalog[ i , 'year' ] == 2014.38 ,
+								"https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/weights/cps-asec-ascii-repwgt-2014-redes.dat" ,
+								ifelse(
+									catalog[ i , 'year' ] == 2014 ,
+									"https://www2.census.gov/programs-surveys/demo/datasets/income-poverty/time-series/weights/cps-asec-ascii-repwgt-2014-fullsample.dat" ,
+									paste0( 
+										"https://thedataweb.rm.census.gov/pub/cps/march/CPS_ASEC_ASCII_REPWGT_" , 
+										substr( catalog[ i , 'year' ] , 1 , 4 ) , 
+										".zip" 
+									)
+								)
 							)
 						)
 					)
+
 					
 				# census.gov website containing the current population survey's SAS import instructions
-				if( catalog[ i , 'year' ] %in% 2014.38 ){
+				if( ( catalog[ i , 'year' ] %in% 2014.38 ) ){
 				
 					CPS.replicate.weight.SAS.read.in.instructions <- tempfile()
 
@@ -517,43 +662,62 @@ lodown_cpsasec <-
 						CPS.replicate.weight.SAS.read.in.instructions 
 					)
 					
+				} else if( !( catalog[ i , 'production_file' ] ) ){
+				
+					CPS.replicate.weight.SAS.read.in.instructions <- NULL
+				
 				} else {
 					
 					CPS.replicate.weight.SAS.read.in.instructions <- 
 						paste0( 
-							"http://thedataweb.rm.census.gov/pub/cps/march/CPS_ASEC_ASCII_REPWGT_" , 
+							"https://thedataweb.rm.census.gov/pub/cps/march/CPS_ASEC_ASCII_REPWGT_" , 
 							substr( catalog[ i , 'year' ] , 1 , 4 ) , 
 							".SAS" 
 						)
 
 				}
 
-				zip_file <- 
-					tolower( 
-						substr( 
-							CPS.replicate.weight.file.location , 
-							nchar( CPS.replicate.weight.file.location ) - 2 , 
-							nchar( CPS.replicate.weight.file.location ) 
-						)
-					) == 'zip'
 
+				if( !( catalog[ i , 'production_file' ] ) ){
 					
-				if( !zip_file ){
 					rw_tf <- tempfile()
-					cachaca( CPS.replicate.weight.file.location , rw_tf , mode = 'wb' , filesize_fun = 'httr' )
-					CPS.replicate.weight.file.location <- rw_tf
+					cachaca( CPS.replicate.weight.file.location , rw_tf , mode = 'wb' , filesize_fun = 'sas_verify' )
+					rw <- data.frame( haven::read_sas( rw_tf ) )
+					names( rw ) <- toupper( names( rw ) )
+					rw[ grepl( "MARSUPWT" , names( rw ) ) ] <-
+						sapply( rw[ grepl( "MARSUPWT" , names( rw ) ) ] , function( w ) w * 1000 )
+						
+					names( rw ) <- gsub( "MARSUPWT_" , "PWWGT" , names( rw ) )
+				
+				} else {
+				
+					zip_file <- 
+						tolower( 
+							substr( 
+								CPS.replicate.weight.file.location , 
+								nchar( CPS.replicate.weight.file.location ) - 2 , 
+								nchar( CPS.replicate.weight.file.location ) 
+							)
+						) == 'zip'
+
+						
+					if( !zip_file ){
+						rw_tf <- tempfile()
+						download.file( CPS.replicate.weight.file.location , rw_tf , mode = 'wb' )
+						CPS.replicate.weight.file.location <- rw_tf
+					}
+					
+					# store the CPS ASEC march 2011 replicate weight file as an R data frame
+					rw <-
+						read_SAScii( 
+							CPS.replicate.weight.file.location , 
+							CPS.replicate.weight.SAS.read.in.instructions , 
+							zipped = zip_file
+						)
+
 				}
 				
-				# store the CPS ASEC march 2011 replicate weight file as an R data frame
-				rw <-
-					read_SAScii( 
-						CPS.replicate.weight.file.location , 
-						CPS.replicate.weight.SAS.read.in.instructions , 
-						zipped = zip_file ,
-						filesize_fun = 'httr'
-					)
-
-
+				
 				###################################################
 				# merge cps asec file with replicate weights file #
 				###################################################
@@ -564,6 +728,7 @@ lodown_cpsasec <-
 				
 			}
 			
+			
 			x$one <- 1
 				
 			# # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -572,7 +737,7 @@ lodown_cpsasec <-
 			
 			overlapping.spm.fields <- c( "gestfips" , "fpovcut" , "ftotval" , "marsupwt" )
 			
-			if( catalog[ i , 'year' ] %in% c( 2010:2017 , 2014.38 , 2014.58 ) ){
+			if( ( catalog[ i , 'production_file' ] ) & ( catalog[ i , 'year' ] %in% c( 2010:2018 , 2014.38 , 2014.58 ) ) ){
 
 				if( catalog[ i , 'year' ] >= 2017 ){
 				
@@ -587,26 +752,33 @@ lodown_cpsasec <-
 				
 					sp.url <- 
 						paste0( 
-							"https://www.census.gov/housing/povmeas/spmresearch/spmresearch" , 
+							"https://www2.census.gov/programs-surveys/supplemental-poverty-measure/datasets/spm" , 
+							if( catalog[ i , 'year' ] == 2014.38 ) "-redes" , 
+							"/spmresearch" , 
 							floor( catalog[ i , 'year' ] - 1 ) , 
-							if ( catalog[ i , 'year' ] == 2014.38 ) "_redes" else if ( catalog[ i , 'year' ] >= 2016 ) "" else "new" ,
+							if ( catalog[ i , 'year' ] == 2014.38 ) "_redes" else if ( catalog[ i , 'year' ] >= 2015 ) "" else "new" ,
 							".sas7bdat" 
 						)
 				
 				}
 				
-				cachaca( sp.url , tf , mode = 'wb' , filesize_fun = 'httr' )
+				cachaca( sp.url , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
 				
 				sp <- data.frame( haven::read_sas( tf ) )
 			
 				if ( catalog[ i , 'year' ] == 2014 ){
 					
-					sp.url <- "https://www.census.gov/housing/povmeas/spmresearch/spmresearch2013_redes.sas7bdat"
+					sp.url <- "https://www2.census.gov/programs-surveys/supplemental-poverty-measure/datasets/spm-redes/spmresearch2013_redes.sas7bdat"
 						
-					cachaca( sp.url , tf , mode = 'wb' , filesize_fun = 'httr' )
+					cachaca( sp.url , tf , mode = 'wb' , filesize_fun = 'sas_verify' )
 					
 					sp2 <- data.frame( haven::read_sas( tf ) )
 				
+					names( sp ) <- toupper( names( sp ) )
+					names( sp2 ) <- toupper( names( sp2 ) )
+					sp <- sp[ intersect( names( sp ) , names( sp2 ) ) ]
+					sp2 <- sp2[ intersect( names( sp ) , names( sp2 ) ) ]
+					
 					sp <- rbind( sp , sp2 )
 					
 					rm( sp2 ) ; gc()
@@ -630,7 +802,7 @@ lodown_cpsasec <-
 			
 			names( x ) <- tolower( names( x ) )
 			
-			saveRDS( x , file = catalog[ i , 'output_filename' ] ) ; rm( x ) ; gc()
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE ) ; rm( x ) ; gc()
 			
 			# delete the temporary files
 			suppressWarnings( file.remove( tf ) )
@@ -639,6 +811,8 @@ lodown_cpsasec <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}
@@ -648,24 +822,28 @@ lodown_cpsasec <-
 	
 # data dictionary parser
 cpsasec_dd_parser <-
-	function( url ){
+	function( this_url ){
 
+		tf <- tempfile()
+	
 		# read in the data dictionary
-		lines <- readLines ( url )
+		httr::GET( this_url , httr::write_disk( tf , overwrite = TRUE ) )
+		
+		these_lines <- readLines ( tf )
 		
 		# find the record positions
-		hh_start <- grep( "HOUSEHOLD RECORD" , lines )
+		hh_start <- grep( "HOUSEHOLD RECORD" , these_lines )
 		
-		fm_start <- grep( "FAMILY RECORD" , lines )
+		fm_start <- grep( "FAMILY RECORD" , these_lines )
 		
-		pn_start <- grep( "PERSON RECORD" , lines )
+		pn_start <- grep( "PERSON RECORD" , these_lines )
 		
 		# segment the data dictionary into three parts
-		hh_lines <- lines[ hh_start:(fm_start - 1 ) ]
+		hh_lines <- these_lines[ hh_start:(fm_start - 1 ) ]
 		
-		fm_lines <- lines[ fm_start:( pn_start - 1 ) ]
+		fm_lines <- these_lines[ fm_start:( pn_start - 1 ) ]
 		
-		pn_lines <- lines[ pn_start:length(lines) ]
+		pn_lines <- these_lines[ pn_start:length(these_lines) ]
 		
 		# loop through all three parts		
 		for ( i in c( "hh_lines" , "fm_lines" , "pn_lines" ) ){
@@ -714,7 +892,7 @@ cpsasec_dd_parser <-
 			stopifnot( cumsum( j$width )[ nrow( j ) - 1 ] == j[ nrow( j ) , 'position' ] - 1 )
 
 			# confirm that the last variable is filler and can be tossed
-			if ( !grepl( "2015" , url ) ){
+			if ( !grepl( "2015" , this_url ) ){
 			
 				stopifnot( j[ nrow( j ) , 'varname' ] == 'FILLER' )
 			

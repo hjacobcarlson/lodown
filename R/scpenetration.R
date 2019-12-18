@@ -1,5 +1,5 @@
-get_catalog_sc_penetration <-
-	function( data_name = "sc_penetration" , output_dir , ... ){
+get_catalog_scpenetration <-
+	function( data_name = "scpenetration" , output_dir , ... ){
 
 		catalog <- NULL
 	
@@ -46,8 +46,10 @@ get_catalog_sc_penetration <-
 	}
 
 
-lodown_sc_penetration <-
-	function( data_name = "sc_penetration" , catalog , ... ){
+lodown_scpenetration <-
+	function( data_name = "scpenetration" , catalog , ... ){
+
+		on.exit( print( catalog ) )
 
 		tf <- tempfile()
 
@@ -62,7 +64,7 @@ lodown_sc_penetration <-
 			for ( i in seq_len( nrow( these_entries ) ) ){
 
 				# download the file
-				cachaca( these_entries[ i , "full_url" ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+				cachaca( these_entries[ i , "full_url" ] , tf , mode = 'wb' )
 
 
 				# extract the contents of the zipped file
@@ -72,7 +74,7 @@ lodown_sc_penetration <-
 				# your local computer to each of the unzipped files
 				unzipped_files <- unzip_warn_fail( tf , exdir = np_dirname( these_entries[ i , 'output_filename' ] ) )
 
-				x <- data.frame( readr::read_csv( grep( "State_County" , unzipped_files , value = TRUE ) , guess_max = 100000 ) )
+				x <- data.frame( readr::read_csv( grep( "State_County(.*)\\.csv$" , unzipped_files , value = TRUE , ignore.case = TRUE ) , guess_max = 100000 ) )
 
 				x$year_month <- these_entries[ i , 'year_month' ]
 				
@@ -98,12 +100,14 @@ lodown_sc_penetration <-
 
 			}
 			
-			saveRDS( this_result , file = this_savefile )
+			saveRDS( this_result , file = this_savefile , compress = FALSE )
 
 			cat( paste0( data_name , " catalog entry " , which( this_savefile == unique_savefiles ) , " of " , length( unique_savefiles ) , " stored at '" , this_savefile , "'\r\n\n" ) )
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

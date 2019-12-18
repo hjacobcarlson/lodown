@@ -40,6 +40,8 @@ get_catalog_share <-
 lodown_share <-
 	function( data_name = "share" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile()
 
 		if( !( 'your_username' %in% names(list(...)) ) ) stop( "`your_username` parameter must be specified.  create an account at http://www.share-project.org/t3/share/fileadmin/pdf_documentation/SHARE_Data_Statement.pdf" )
@@ -55,7 +57,7 @@ lodown_share <-
 		for ( i in seq_len( nrow( catalog ) ) ){
 
 			# download the file
-			this_file <- cachaca( catalog[ i , "full_url" ] , FUN = httr::GET , filesize_fun = 'httr' )
+			this_file <- cachaca( catalog[ i , "full_url" ] , FUN = httr::GET )
 
 			writeBin( httr::content( this_file , "raw" ) , tf )
 			
@@ -69,7 +71,7 @@ lodown_share <-
 				
 				catalog[ i , 'case_count' ] <- max( catalog[ i , 'case_count' ] , nrow( x ) , na.rm = TRUE )
 
-				saveRDS( x , file = gsub( "\\.dta$" , ".rds" , this_stata ) )
+				saveRDS( x , file = gsub( "\\.dta$" , ".rds" , this_stata ) , compress = FALSE )
 			
 			}
 				
@@ -79,6 +81,8 @@ lodown_share <-
 			cat( paste0( data_name , " catalog entry " , i , " of " , nrow( catalog ) , " stored in '" , catalog[ i , 'output_folder' ] , "'\r\n\n" ) )
 
 		}
+
+		on.exit()
 
 		catalog
 

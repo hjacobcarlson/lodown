@@ -45,19 +45,21 @@ get_catalog_scf <-
 lodown_scf <-
 	function( data_name = "scf" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
 
-			cachaca( catalog[ i , "main_url" ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+			cachaca( catalog[ i , "main_url" ] , tf , mode = 'wb' )
 			scf.m <- data.frame( haven::read_dta( unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , '/unzips' ) ) ) )
 			file.remove( unzipped_files )
 
-			cachaca( catalog[ i , "extract_url" ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+			cachaca( catalog[ i , "extract_url" ] , tf , mode = 'wb' )
 			scf.e <- data.frame( haven::read_dta( unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , '/unzips' ) ) ) )
 			file.remove( unzipped_files )
 
-			cachaca( catalog[ i , "rw_url" ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+			cachaca( catalog[ i , "rw_url" ] , tf , mode = 'wb' )
 			rw <- data.frame( haven::read_dta( unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , '/unzips' ) ) ) )
 			file.remove( unzipped_files )
 
@@ -166,8 +168,8 @@ lodown_scf <-
 			rw <- rw[ order( rw$yy1 ) , ]
 
 			# save the five implicates and the replicate weights file
-			saveRDS( list( imp1 , imp2 , imp3 , imp4 , imp5 ) , file = catalog[ i , 'output_filename' ] )
-			saveRDS( rw , file = catalog[ i , 'rw_filename' ] )
+			saveRDS( list( imp1 , imp2 , imp3 , imp4 , imp5 ) , file = catalog[ i , 'output_filename' ] , compress = FALSE )
+			saveRDS( rw , file = catalog[ i , 'rw_filename' ] , compress = FALSE )
 
 			catalog[ i , 'case_count' ] <- nrow( imp1 )
 
@@ -180,14 +182,22 @@ lodown_scf <-
 		# delete the temporary files
 		file.remove( tf )
 
+		on.exit()
+		
 		catalog
 
 	}
 
 
-# MIcombine() variant (code from the `mitools` package) that only uses
-# the sampling variance from the *first* imputation instead of averaging all five
-pirls_MIcombine <- timss_MIcombine <- scf_MIcombine <-
+	
+
+#' variant of \code{mitools::MIcombine} that only uses the sampling variance from the first implicate instead of averaging all five
+#'
+#' @seealso \url{https://cran.r-project.org/web/packages/mitools/mitools.pdf}
+#'
+#' @rdname scf
+#' @export
+scf_MIcombine <-
 	function (results, variances, call = sys.call(), df.complete = Inf, ...) {
 		m <- length(results)
 		oldcall <- attr(results, "call")
@@ -222,3 +232,5 @@ pirls_MIcombine <- timss_MIcombine <- scf_MIcombine <-
 		class(rval) <- "MIresult"
 		rval
 	}
+
+

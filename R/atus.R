@@ -68,6 +68,8 @@ get_catalog_atus <-
 lodown_atus <-
 	function( data_name = "atus" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
@@ -96,7 +98,7 @@ lodown_atus <-
 
 			# save the object named within savename
 			# into an R data file (.rds) for easy loading later
-			saveRDS( x , file = catalog[ i , 'output_filename' ] )
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 
 			# delete the temporary files
 			file.remove( unzipped_files , tf )
@@ -105,6 +107,8 @@ lodown_atus <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

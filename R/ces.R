@@ -25,6 +25,8 @@ get_catalog_ces <-
 lodown_ces <-
 	function( data_name = "ces" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		all_thresholds <- census_thresholds()
 	
 		tf <- tempfile()
@@ -98,7 +100,7 @@ lodown_ces <-
 				newids <- unique( c( newids , x$newid ) )
 				
 				# save the file as an R data file (.rds) immediately
-				saveRDS( x , file = paste0( catalog[ i , 'output_folder' ] , "/" , df_name , ".rds" ) )
+				saveRDS( x , file = paste0( catalog[ i , 'output_folder' ] , "/" , df_name , ".rds" ) , compress = FALSE )
 				
 			}
 
@@ -111,6 +113,8 @@ lodown_ces <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

@@ -136,6 +136,8 @@ get_catalog_ahs <-
 lodown_ahs <-
 	function( data_name = "ahs" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+	
 		for ( i in seq_len( nrow( catalog ) ) ){
 				
 			tf <- tempfile()
@@ -144,7 +146,7 @@ lodown_ahs <-
 			data.loaded <- NULL
 			
 			# download the exact file to the local disk
-			cachaca( catalog[ i , 'full_url' ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+			cachaca( catalog[ i , 'full_url' ] , tf , mode = 'wb' )
 			
 			# import files from largest to smallest
 			tf <- tf[ rev( order( file.info(tf)$size ) ) ]
@@ -299,7 +301,7 @@ lodown_ahs <-
 						names( x ) <- tolower( names( x ) )
 											
 						# save the newly-renamed object as an `.rds` file on the local disk
-						saveRDS( x , file = this.filename ) ; rm( x ) ; gc()
+						saveRDS( x , file = this.filename , compress = FALSE ) ; rm( x ) ; gc()
 									
 						# confirm that this data file has been loaded.
 						data.loaded <- TRUE
@@ -431,7 +433,7 @@ lodown_ahs <-
 					)
 					
 				# save the merged file to the local disk as well	
-				saveRDS( x , file = merge.fp )
+				saveRDS( x , file = merge.fp , compress = FALSE )
 								
 				# add the number of records to the catalog
 				catalog[ i , 'case_count' ] <- nrow( x )
@@ -447,6 +449,8 @@ lodown_ahs <-
 			cat( paste0( data_name , " catalog entry " , i , " of " , nrow( catalog ) , " stored in '" , catalog[ i , 'output_folder' ] , "'\r\n\n" ) )
 
 		}
+	
+		on.exit()
 
 		catalog
 

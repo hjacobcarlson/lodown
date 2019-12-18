@@ -30,10 +30,10 @@ get_catalog_cpsbasic <-
 		
 		# unique_versions <- unique( cps_version )
 		
-		possible_dds <- grep( "\\.txt$" , basic_refs , ignore.case = TRUE , value = TRUE )
+		possible_dds <- grep( "\\.txt$|\\.asc$" , basic_refs , ignore.case = TRUE , value = TRUE )
 		
 		# hardcoded exclusion
-		possible_dds <- possible_dds[ !grepl( "dec07revwgts_dd\\.txt" , possible_dds ) ]
+		possible_dds <- possible_dds[ !grepl( "dec07revwgts_dd\\.txt|2000\\-2extract\\.txt" , possible_dds ) ]
 
 		this_dd <- mapply( rep , possible_dds , rle( cps_version )$length )
 
@@ -53,7 +53,9 @@ get_catalog_cpsbasic <-
 		catalog$output_filename = paste0( output_dir , "/" , catalog$year , " " , stringr::str_pad( catalog$month , 2 , pad = "0" ) , " cps basic.rds" )
 		
 		rownames( catalog ) <- NULL
-			
+
+		catalog <- catalog[ order( catalog$year , catalog$month ) , ]
+		
 		catalog
 
 	}
@@ -62,13 +64,14 @@ get_catalog_cpsbasic <-
 lodown_cpsbasic <-
 	function( data_name = "cpsbasic" , catalog , ... ){
 
-		tf <- tempfile()
+		on.exit( print( catalog ) )
 
+		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
 
 			# download the file
-			cachaca( catalog[ i , "full_url" ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+			cachaca( catalog[ i , "full_url" ] , tf , mode = 'wb' )
 
 			unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , "/unzips" ) )
 
@@ -81,7 +84,7 @@ lodown_cpsbasic <-
 
 			catalog[ i , 'case_count' ] <- nrow( x )
 			
-			saveRDS( x , file = catalog[ i , 'output_filename' ] ) ; rm( x ) ; gc()
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE ) ; rm( x ) ; gc()
 
 			# delete the temporary files
 			suppressWarnings( file.remove( tf , unzipped_files ) )
@@ -90,22 +93,34 @@ lodown_cpsbasic <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}
 
 
-	
-	
+		
 # data dictionary parser
 cps_dd_parser <-
 	function( dd_url ){
 
 		# read in the data dictionary
-		dd_con <- file( dd_url , encoding = 'windows-1252' )
-		the_lines <- readLines ( dd_con )
+		tf <- tempfile()
+		httr::GET( dd_url , httr::write_disk( tf , overwrite = TRUE ) )
+		dd_con <- file( tf , 'rb' , encoding = 'latin1' )
+		the_lines <- readLines( dd_con , encoding = 'latin1' )
 		close( dd_con )
 		
+		the_lines <- gsub( "\u0096" , "-" , the_lines )
+		the_lines <- gsub( "\\u0096" , "-" , the_lines )
+		the_lines <- gsub( "\\\u0096" , "-" , the_lines )
+		the_lines <- gsub("\u0085", "X", the_lines)
+		the_lines <- gsub("\\u0085", "X", the_lines)
+		the_lines <- gsub("\\\u0085", "X", the_lines)
+		the_lines <- gsub("\u0092", "X", the_lines)
+		the_lines <- gsub("\\u0092", "X", the_lines)
+		the_lines <- gsub("\\\u0092", "X", the_lines)
 		the_lines <- gsub( "\\(|\\)" , "" , the_lines )
 		
 		# hardcodes
@@ -155,6 +170,31 @@ cps_dd_parser <-
 			the_lines <- the_lines[ !grepl( "PADDING      4     January 2000 - December 2000 Only                         116-119" , the_lines ) ]
 		
 		}
+
+		if( dd_url == "https://thedataweb.rm.census.gov/pub/cps/basic/199801-/jan98dd.asc" ){
+		
+			# find lines with "implied" after break
+			idx_implied <- grep( "^[ ]+implied", the_lines, ignore.case = TRUE)
+			
+			# copy string to previous line
+			the_lines[idx_implied-1] <- paste(the_lines[idx_implied-1],gsub("^[ ]+"," ",the_lines[idx_implied]))
+			
+			the_lines[idx_implied] <- ""
+			
+			the_lines[759] <- "D FILLER 2 149"
+			
+			the_lines[3132] <- "D FILLER 4 536"
+			
+			the_lines[3164] <- "D FILLER 2 557"
+			
+			the_lines[3315] <- "D FILLER 6 633"
+			
+			the_lines[3431] <- "D FILLER 2 681"
+			
+			the_lines[3737] <- "D FILLER 4 787"
+			
+		}
+
 		
 		# end of hardcodes
 		
@@ -211,15 +251,41 @@ cps_dd_parser <-
 		the_dd <- gsub( "( +)-" , "-" , the_dd )
 
 		the_dd <- gsub( "( +)" , " " , the_dd )
+		
+		the_dd <- gsub("\u0085", "X", the_dd)
+		
+		the_dd <- gsub("\\u0085", "X", the_dd)
+		
+		the_dd <- gsub("\\\u0085", "X", the_dd)
+
+		the_dd <- gsub("\u0092", "X", the_dd)
+		
+		the_dd <- gsub("\\u0092", "X", the_dd)
+		
+		the_dd <- gsub("\\\u0092", "X", the_dd)
 	
 		the_dd <- gsub( "^FILLER ([0-9]+) ([0-9]+)-([0-9]+)$" , "FILLER \\1 FILLER \\2-\\3" , the_dd )
 	
 		the_dd <- gsub( "^PADDING ([0-9]+) ([0-9]+)-([0-9]+)$" , "PADDING \\1 PADDING \\2-\\3" , the_dd )
 	
-		# keep only the first three items in the line
-		the_dd <- gsub( "([A-z0-9]+) ([0-9]+) (.*) ([0-9]+)-([0-9]+)" , "\\1 \\2 \\4 \\5" , the_dd )
-	
-	
+		if( dd_url == "https://thedataweb.rm.census.gov/pub/cps/basic/199801-/jan98dd.asc" ){
+		
+			the_dd <- gsub( "^D " , "" , the_dd )
+			
+			the_dd <- 
+				paste( 
+					the_dd , 
+					as.numeric( gsub( "(.*) (.*) (.*)" , "\\3" , the_dd ) ) + 
+					as.numeric( gsub( "(.*) (.*) (.*)" , "\\2" , the_dd ) ) - 1 
+				)
+
+		} else {
+		
+			# keep only the first three items in the line
+			the_dd <- gsub( "([A-z0-9]+) ([0-9]+) (.*) ([0-9]+)-([0-9]+)" , "\\1 \\2 \\4 \\5" , the_dd )
+		
+		}
+		
 		rows_to_keep <- grep( "([A-z0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)" , the_dd )
 		
 		for( this_line in seq_along( idp ) ) while( !( idp[ this_line ] %in% rows_to_keep ) ) idp[ this_line ] <- idp[ this_line ] - 1

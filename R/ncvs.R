@@ -14,7 +14,7 @@ get_catalog_ncvs <-
 	
 	catalog$unzip_folder <- gsub( "National Crime Victimization Survey( )?" , "" , catalog$unzip_folder )
 
-	catalog$dbfolder <- paste0( output_dir , "/MonetDB" )
+	catalog$dbfile <- paste0( output_dir , "/SQLite.db" )
 
 	catalog
 
@@ -23,6 +23,8 @@ get_catalog_ncvs <-
 
 lodown_ncvs <-
 	function( data_name = "ncvs" , catalog , ... ){
+
+		on.exit( print( catalog ) )
 
 		lodown_icpsr( data_name = data_name , catalog , ... )
 		
@@ -56,7 +58,7 @@ lodown_ncvs <-
 				
 				names( x ) <- tolower( names( x ) )
 				
-				saveRDS( x , file = catalog[ i , 'output_filename' ] )
+				saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 				
 				catalog[ i , 'case_count' ] <- nrow( x )
 				
@@ -66,6 +68,8 @@ lodown_ncvs <-
 			
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

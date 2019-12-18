@@ -141,6 +141,8 @@ get_catalog_ess <-
 lodown_ess <-
   function( data_name = "ess" , catalog , ... ){
 
+	on.exit( print( catalog ) )
+
 	if ( !requireNamespace( "memisc" , quietly = TRUE ) ) stop( "memisc needed for this function to work. to install it, type `install.packages( 'memisc' )`" , call. = FALSE )
 
 	if( !( 'your_email' %in% names(list(...)) ) ) stop( "`your_email` parameter must be specified.  create an account at http://www.europeansocialsurvey.org/user/new" )
@@ -159,8 +161,14 @@ lodown_ess <-
 
     for ( i in seq_len( nrow( catalog ) ) ){
 
+		# ignore special case of a file containing two datasets instead of one
+		# (each dataset is downloaded separately by other catalog entries)
+		if( grepl( "ESS3LVRO" , catalog[ i , 'full_url' ] ) ) {
+			next
+		}
+
 		# download the file
-		current.file <- cachaca( catalog[ i , 'full_url' ] , FUN = httr::GET , filesize_fun = 'httr' )
+		current.file <- cachaca( catalog[ i , 'full_url' ] , FUN = httr::GET )
 
 		writeBin( httr::content( current.file ) , tf )
 
@@ -180,7 +188,7 @@ lodown_ess <-
 			if ( any( grepl( 'sav' , spss.files ) ) ){
 			
 				# read that dot.sav file as a data.frame object
-				if( grepl( "ESS7occpCZ|ESS6occpSK" , spss.files ) ){
+				if( grepl( "ESS7occpCZ|ESS6occpSK" , spss.files[ grep( 'sav' , spss.files ) ] ) ){
 					x <- foreign::read.spss( spss.files[ grep( 'sav' , spss.files ) ] , to.data.frame = TRUE , use.value.labels = FALSE )
 				} else {
 					x <- data.frame( haven::read_spss( spss.files[ grep( 'sav' , spss.files ) ] ) )
@@ -245,7 +253,7 @@ lodown_ess <-
 
 			catalog[ i , 'case_count' ] <- nrow( x )
 			
-			saveRDS( x , file = catalog[ i , 'output_filename' ] )
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 
 		}
 		
@@ -253,6 +261,8 @@ lodown_ess <-
 		
     }
 
+	on.exit()
+	
     catalog
 
   }

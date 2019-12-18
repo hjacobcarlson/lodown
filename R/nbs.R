@@ -5,7 +5,7 @@ get_catalog_nbs <-
 		
 		puf_homepage <- "https://www.ssa.gov/disabilityresearch/publicusefiles.html"
 	
-		nbs_rounds <- gsub( "(.*)nbs_round_(.*)\\.htm(.*)" , "nbs_round_\\2.htm" , grep( "nbs_round" , readLines( puf_homepage , warn = FALSE ) , value = TRUE ) )
+		nbs_rounds <- gsub( "(.*)nbs_round_(.*)\\.htm(l?)(.*)" , "nbs_round_\\2.htm\\3" , grep( "nbs_round" , readLines( puf_homepage , warn = FALSE ) , value = TRUE ) )
 		
 		for( this_round in nbs_rounds ){
 			
@@ -36,8 +36,9 @@ get_catalog_nbs <-
 lodown_nbs <-
 	function( data_name = "nbs" , catalog , ... ){
 
-		tf <- tempfile()
+		on.exit( print( catalog ) )
 
+		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
 
@@ -58,7 +59,7 @@ lodown_nbs <-
 
 			catalog[ i , 'case_count' ] <- nrow( x )
 			
-			saveRDS( x , file = catalog[ i , 'output_filename' ] )
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 
 			# delete the temporary files
 			suppressWarnings( file.remove( tf ) )
@@ -67,6 +68,8 @@ lodown_nbs <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

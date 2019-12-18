@@ -17,6 +17,8 @@ get_catalog_sbo <-
 lodown_sbo <-
 	function( data_name = "sbo" , catalog , ... ){
 	
+		on.exit( print( catalog ) )
+
 		if ( !requireNamespace( "mitools" , quietly = TRUE ) ) stop( "mitools needed for this function to work. to install it, type `install.packages( 'mitools' )`" , call. = FALSE )
 
 		if( nrow( catalog ) != 1 ) stop( "sbo catalog must be exactly one record" )
@@ -73,13 +75,15 @@ lodown_sbo <-
 		sbo_svy <- list( coef = sbo_coef , var = sbo_var )
 		class( sbo_svy ) <- 'sbosvyimputationList'
 		
-		saveRDS( sbo_svy , file = catalog$output_filename ) ; rm( sbo_svy ) ; gc()
+		saveRDS( sbo_svy , file = catalog$output_filename , compress = FALSE ) ; rm( sbo_svy ) ; gc()
 		
 		# delete the temporary files
 		suppressWarnings( file.remove( tf , unzipped_files ) )
 
 		cat( paste0( data_name , " catalog entry " , 1 , " of " , nrow( catalog ) , " stored at '" , catalog$output_filename , "'\r\n\n" ) )
 
+		on.exit()
+		
 		catalog
 
 	}
@@ -92,53 +96,19 @@ lodown_sbo <-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 
-# re-create the `with` function that looks for both
-# the coefficient and the variance survey objects
-sbo_with <-
-	function ( sbo.svy , expr , ... ){
-	
-		pf <- parent.frame()
-		
-		expr <- substitute( expr )
-		
-		expr$design <- as.name(".design")
-
-		# this pulls in means, medians, totals, etc.
-		# notice it uses sbo.svy$coef
-		results <- eval( expr , list( .design = sbo.svy$coef ) )
-		
-		gc()
-		
-		# this is used to calculate the variance, adjusted variance, standard error
-		# notice it uses the sbo.svy$var object
-		variances <- 
-			lapply( 
-				sbo.svy$var$designs , 
-				function( .design ){ 
-					eval( expr , list( .design = .design ) , enclos = pf ) 
-				} 
-			)
-		
-		gc()
-		
-		# combine both results..
-		rval <- list( coef = results , var = variances )
-		
-		# ..into a brand new object class
-		class( rval ) <- 'imputationResultList'
-		
-		gc()
-		
-		# and return it.
-		rval
-	}
-
-# re-vamp the mitools package `MIcombine` function
-# so it works on `rval` objects created by the `with` method above
-
-# also note, the 2007-specific variance adjustment.  this will change in other years
-# this adjustment statistic was pulled from the middle of page 8
-# https://www2.census.gov/econ/sbo/07/pums/2007_sbo_pums_users_guide.pdf#page=8
+#' dual design calculations for the survey of business owners
+#'
+#' the \code{mitools::MIcombine} variant includes a 2007-specific variance adjustment.  this will change in other years.
+#' this adjustment statistic was pulled from the middle of page 8
+#' \url{https://www2.census.gov/econ/sbo/07/pums/2007_sbo_pums_users_guide.pdf#page=8}
+#'
+#' each of these sbo-specific functions contain a variant of some other \code{library(survey)} function that also maintains the census bureau's dual design calculation.
+#' these functions expect both the coefficient and the variance survey objects
+#'
+#' @seealso \url{https://cran.r-project.org/web/packages/mitools/mitools.pdf}
+#'
+#' @rdname sbo
+#' @export
 sbo_MIcombine <-
 	function( x , adjustment = 1.992065 ){
 	
@@ -183,8 +153,53 @@ sbo_MIcombine <-
 		rval
 	}
 
-# construct a way to subset sbo.svy objects,
-# since they're actually two separate database-backed survey objects, not one.
+
+
+#' @rdname sbo
+#' @export
+sbo_with <-
+	function ( sbo.svy , expr , ... ){
+	
+		pf <- parent.frame()
+		
+		expr <- substitute( expr )
+		
+		expr$design <- as.name(".design")
+
+		# this pulls in means, medians, totals, etc.
+		# notice it uses sbo.svy$coef
+		results <- eval( expr , list( .design = sbo.svy$coef ) )
+		
+		gc()
+		
+		# this is used to calculate the variance, adjusted variance, standard error
+		# notice it uses the sbo.svy$var object
+		variances <- 
+			lapply( 
+				sbo.svy$var$designs , 
+				function( .design ){ 
+					eval( expr , list( .design = .design ) , enclos = pf ) 
+				} 
+			)
+		
+		gc()
+		
+		# combine both results..
+		rval <- list( coef = results , var = variances )
+		
+		# ..into a brand new object class
+		class( rval ) <- 'imputationResultList'
+		
+		gc()
+		
+		# and return it.
+		rval
+	}
+
+
+
+#' @rdname sbo
+#' @export
 sbo_subset <-
 	function( x , ... ){
 		
@@ -219,9 +234,8 @@ sbo_subset <-
 	}
 
 	
-
-# construct a way to update sbo.svy objects,
-# since they're actually two separate database-backed survey objects, not one.
+#' @rdname sbo
+#' @export
 sbo_update <-
 	function( x , ... ){
 		
@@ -252,10 +266,13 @@ sbo_update <-
 		upd.svy
 	}
 
+#' @rdname sbo
+#' @export
 sbo_degf <- function( x ) survey:::degf( x$coef )
 
 
-
+#' @rdname sbo
+#' @export
 sbo_MIsvyciprop <-
 	function (formula, design, method = c("logit", "likelihood",
 		"asin", "beta", "mean", "xlogit"), level = 0.95, df = mean(unlist(lapply(design$designs,survey::degf))),

@@ -64,7 +64,6 @@ httr_filesize <-
 
 			failed.attempt <-
 				try( {
-
 					xx <- httr::HEAD(url)
 					yy <- httr::headers(xx)$`content-length`
 					return( as.numeric( yy ) )
@@ -78,7 +77,7 @@ httr_filesize <-
 			
 		}
 		
-		stop( paste( "httr::HEAD(" , url , ")\nfailed after" , initial.attempts , "attempts" ) )					
+		stop( paste0( "httr::HEAD( '" , url , "' )\nfailed after " , initial.attempts , " attempts" ) )					
 
 	}
 
@@ -105,7 +104,9 @@ download_to_filename <- function(url, dlfile, curl=RCurl::getCurlHandle(), ...) 
 #' @param FUN defaults to \code{download.file} but \code{downloader::download}, \code{httr::GET}, \code{RCurl::getBinaryURL} also work
 #' @param attempts number of times to retry a broken download
 #' @param sleepsec length of \code{Sys.sleep()} between broken downloads
-#' @param filesize_fun use \code{RCurl::getURL} or \code{httr::HEAD} to determine file size.  use "unzip_verify" to verify the download by unzipping it without a warning instead
+#' @param filesize_fun use \code{httr::HEAD} or \code{RCurl::getURL} to determine file size.  use "unzip_verify" to verify the download by attempting to unzip the file without issue, use "sas_verify" to verify the download by attempting to \code{haven::read_sas} the file without issue
+#' @param savecache whether to actually cache the downloaded files in the temporary directories.  setting this option to FALSE eliminates the purpose of cachaca(), but sometimes it's necessary to disable for a single call, or globally.
+#' @param cdc_ftp_https whether to substitute cdc ftp sites with https, i.e. \code{gsub( "ftp://ftp.cdc.gov/" , "https://ftp.cdc.gov/" , this_url , fixed = TRUE )}.
 #'
 #' @return just pass on whatever FUN returns
 #'
@@ -148,12 +149,17 @@ cachaca <-
 		sleepsec = 60 ,
 
 		# which filesize function should be used
-		# c( 'rcurl' , 'httr' )
-		filesize_fun = 'rcurl'
+		filesize_fun = 'httr' ,
+		
+		# whether to actually cache the downloaded files
+		# setting this option to FALSE eliminates the purpose of cachaca()
+		# but sometimes it's necessary to disable for a single call, or globally
+		savecache = getOption( "lodown.cachaca.savecache" , TRUE ) 
 
 	) {
 
-
+		if( !( filesize_fun %in% c( 'httr' , 'rcurl' , 'unzip_verify' , 'sas_verify' ) ) ) stop( "filesize_fun= must be 'httr', 'rcurl', 'unzip_verify', or 'sas_verify'" )
+		
 		# if the cached file exists, assume it's good.
 		urlhash <- digest::digest(this_url)
 
@@ -189,15 +195,15 @@ cachaca <-
 		if( is.null( destfile ) ){
 			cat( paste0( "saving from URL\r\n'" , this_url , "'\r\nto loaded object within R session\r\n\n" ) )
 		} else {
-			cat( paste0( "Downloading from URL\r\n'" , this_url , "'\r\nto file\r\n'" , destfile , "'\r\n\n" ) )
+			cat( paste0( "downloading from URL\r\n'" , this_url , "'\r\nto file\r\n'" , destfile , "'\r\n\n" ) )
 		}
 
+
+		if( filesize_fun == 'httr' ) this_filesize <- httr_filesize( this_url , attempts , sleepsec )
 		
 		if( filesize_fun == 'rcurl' ) this_filesize <- rcurl_filesize( this_url , attempts , sleepsec )
 
-		if( filesize_fun == 'httr' ) this_filesize <- httr_filesize( this_url , attempts , sleepsec )
-
-		if( filesize_fun != 'unzip_verify' && this_filesize == 0 ) stop( "remote server lists file size as zero" )
+		if( !( filesize_fun %in% c( 'sas_verify' , 'unzip_verify' ) ) && this_filesize == 0 ) stop( "remote server lists file size as zero" )
 
 		# start out with a failed attempt, so the while loop below commences
 		failed.attempt <- try( stop() , silent = TRUE )
@@ -235,6 +241,8 @@ cachaca <-
 							file.remove( unzip_tf , unzipped_files )
 													
 						}
+										
+						if( filesize_fun == 'sas_verify' ) stop( "filesize_fun == 'sas_verify' not implemented when destfile= is NULL" )
 												
 						if( !isTRUE( all.equal( length( success ) , this_filesize ) ) && !isTRUE( all.equal( length( httr::content( success ) ) , this_filesize ) ) ){
 
@@ -252,7 +260,7 @@ cachaca <-
 						# if using GET with write_disk..
 						if( identical( FUN , httr::GET ) ){
 						# do not include the destfile= in the call, since it's already included inside the write_disk()
-						
+							
 							# did the download work?
 							success <- do.call( FUN , list( this_url , ... ) )
 
@@ -272,6 +280,15 @@ cachaca <-
 							this_filesize <- file.info( destfile )$size
 							
 							file.remove( unzipped_files )
+													
+						}
+						
+						if( filesize_fun == 'sas_verify' ){
+						
+							tryCatch( haven::read_sas( destfile ) , warning = function(w) { stop( "sas_verify failed: " , conditionMessage( w ) ) } )
+							
+							# if the unzip worked without issue, then the file size is correct
+							this_filesize <- file.info( destfile )$size
 													
 						}
 						
@@ -302,7 +319,7 @@ cachaca <-
 		if ( exists( 'success' ) ){
 
 			# only save to the cachefile if the savecache options is TRUE (the default)
-			if( getOption( "lodown.cachaca.savecache" , TRUE ) ){
+			if( savecache ){
 			
 				if( is.null( destfile ) ){
 

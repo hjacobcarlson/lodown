@@ -4,7 +4,7 @@ get_catalog_nps <-
 		tf <- tempfile()
 	
 		# set the agidnet page containing all of the available microdata files
-		main.file.page <- "http://www.agid.acl.gov/DataFiles/NPS/"
+		main.file.page <- "https://agid.acl.gov/DataFiles/NPS/"
 
 		# download the contents of that page to an object
 		z <- httr::GET( main.file.page )
@@ -42,7 +42,7 @@ get_catalog_nps <-
 		
 		file_prefix <- c( "Caregiver_" , "Collected_Caregiver_" , "Family_Caregiver_" , "Home_Meals_" , "Cong_Meals_" , "Homemaker_" , "InfoAssistance_" , "Transportation_" , "Case_Management_" )
 		
-		full_url = paste0( "http://www.agid.acl.gov/DataFiles/Documents/NPS/" , folder_prefix[ service_ids ] , years , "/" , file_prefix[ service_ids ] , years , "_csv.zip" )
+		full_url = paste0( "https://agid.acl.gov/DataFiles/Documents/NPS/" , folder_prefix[ service_ids ] , years , "/" , file_prefix[ service_ids ] , years , "_csv.zip" )
 		
 		catalog <-
 			data.frame(
@@ -60,13 +60,14 @@ get_catalog_nps <-
 lodown_nps <-
 	function( data_name = "nps" , catalog , ... ){
 
-		tf <- tempfile()
+		on.exit( print( catalog ) )
 
+		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
 
 			# download the file
-			cachaca( catalog[ i , "full_url" ] , tf , mode = 'wb' , filesize_fun = 'httr' )
+			cachaca( catalog[ i , "full_url" ] , tf , mode = 'wb' )
 
 			unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , "/unzips" ) )
 
@@ -82,7 +83,7 @@ lodown_nps <-
 			# add a column of all ones
 			x$one <- 1
 			
-			saveRDS( x , file = catalog[ i , 'output_filename' ] )
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 
 			catalog[ i , 'case_count' ] <- nrow( x )
 			
@@ -93,6 +94,8 @@ lodown_nps <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

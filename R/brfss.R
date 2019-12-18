@@ -7,14 +7,14 @@ get_catalog_brfss <-
 
 		path_to_files <-
 			ifelse( available_years < 1990 , 
-				paste0( "ftp://ftp.cdc.gov/pub/data/Brfss/CDBRFS" , substr( available_years , 3 , 4 ) , "_XPT.zip" ) ,
+				paste0( "https://www.cdc.gov/brfss/annual_data/" , available_years , "/files/CDBRFS" , substr( available_years , 3 , 4 ) , "_XPT.zip" ) ,
 			ifelse( available_years < 2002 , 
-				paste0( "ftp://ftp.cdc.gov/pub/data/Brfss/CDBRFS" , substr( available_years , 3 , 4 ) , "XPT.zip" ) ,
+				paste0( "https://www.cdc.gov/brfss/annual_data/" , available_years , "/files/CDBRFS" , substr( available_years , 3 , 4 ) , "XPT.zip" ) ,
 			ifelse( available_years >= 2012 ,
 				paste0( "https://www.cdc.gov/brfss/annual_data/" , available_years , "/files/LLCP" , available_years , "ASC.ZIP" ) ,
 			ifelse( available_years == 2011 ,
-				"ftp://ftp.cdc.gov/pub/data/brfss/LLCP2011ASC.ZIP" ,
-				paste0( "ftp://ftp.cdc.gov/pub/data/brfss/cdbrfs" , ifelse( available_years == 2002 , available_years , substr( available_years , 3 , 4 ) ) , "asc.zip" )
+				"https://www.cdc.gov/brfss/annual_data/2011/files/LLCP2011ASC.ZIP" ,
+				paste0( "https://www.cdc.gov/brfss/annual_data/" , available_years , "/files/CDBRFS" , ifelse( available_years == 2002 , available_years , substr( available_years , 3 , 4 ) ) , "ASC.zip" )
 				) ) ) )
 
 		sas_files <-
@@ -51,6 +51,8 @@ get_catalog_brfss <-
 lodown_brfss <-
 	function( data_name = "brfss" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile() ; impfile <- tempfile() ; sasfile <- tempfile() ; csvfile <- tempfile()
 
 		
@@ -68,8 +70,8 @@ lodown_brfss <-
 				
 			} else {
 			
-				sas_con <- file( catalog[ i , 'sas_ri' ] , "r" , encoding = "windows-1252" )
-				z <- readLines( sas_con )
+				sas_con <- file( catalog[ i , 'sas_ri' ] , "rb" , encoding = "windows-1252" )
+				z <- readLines( sas_con , encoding = 'latin1' )
 				close( sas_con )
 						
 				# throw out a few columns that cause importation trouble with monetdb
@@ -116,7 +118,7 @@ lodown_brfss <-
 			
 			x$one <- 1
 			
-			saveRDS( x , file = catalog[ i , 'output_filename' ] )
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 
 			# add the number of records to the catalog
 			catalog[ i , 'case_count' ] <- nrow( x )
@@ -128,6 +130,8 @@ lodown_brfss <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

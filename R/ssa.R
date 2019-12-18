@@ -61,6 +61,8 @@ get_catalog_ssa <-
 lodown_ssa <-
 	function( data_name = "ssa" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile()
 
 		for ( i in seq_len( nrow( catalog ) ) ){
@@ -84,7 +86,7 @@ lodown_ssa <-
 
 				catalog[ i , 'case_count' ] <- max( catalog[ i , 'case_count' ] , nrow( x ) , na.rm = TRUE )
 				
-				saveRDS( x , file = paste0( catalog[ i , 'output_folder' ] , "/" , gsub( "\\.sas7bdat" , ".rds" , basename( this_file ) , ignore.case = TRUE ) ) )
+				saveRDS( x , file = paste0( catalog[ i , 'output_folder' ] , "/" , gsub( "\\.sas7bdat" , ".rds" , basename( this_file ) , ignore.case = TRUE ) ) , compress = FALSE )
 
 			}
 			
@@ -95,6 +97,8 @@ lodown_ssa <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

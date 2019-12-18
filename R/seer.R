@@ -25,6 +25,8 @@ get_catalog_seer <-
 lodown_seer <-
 	function( data_name = "seer" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		if( nrow( catalog ) != 1 ) stop( "seer catalog must be exactly one record" )
 	
 		tf <- tempfile()
@@ -37,7 +39,7 @@ lodown_seer <-
 		
 		your_password <- list(...)[["your_password"]]
 
-		cachaca( paste0( "https://" , your_username , ":" , your_password , "@" , catalog$at_url ) , tf , mode = 'wb' , filesize_fun = "httr" )
+		cachaca( paste0( "https://" , your_username , ":" , your_password , "@" , catalog$at_url ) , tf , mode = 'wb' )
 
 		unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , "/unzips" ) )
 
@@ -97,7 +99,7 @@ lodown_seer <-
 			# by removing the downloaded zipped file's folderpath
 			# and substituting `txt` with `rds`
 			# and converting the file location to lowercase
-			sfl <- gsub( "(.*)_TEXTDATA/" , catalog$output_folder , gsub( "\\.txt$" , ".rds" , fp , ignore.case = TRUE ) )
+			sfl <- gsub( "(.*)_TEXTDATA" , normalizePath( catalog$output_folder , winslash = '/' ) , gsub( "\\.txt$" , ".rds" , fp , ignore.case = TRUE ) )
 			
 			# convert all column names to lowercase
 			# in the current data.frame object `x`
@@ -111,7 +113,7 @@ lodown_seer <-
 			catalog$case_count <- max( catalog$case_count , nrow( x ) , na.rm = TRUE )
 			
 			# save the data.frame to the save-file-location
-			saveRDS( x , file = sfl )
+			saveRDS( x , file = sfl ) ; rm( x ) ; gc()
 
 			cat( paste0( data_name , " individual file " , which( fp == ind_file_matches ) , " of " , length( ind_file_matches ) , " stored at '" , sfl , "'\r\n\n" ) )
 
@@ -132,7 +134,7 @@ lodown_seer <-
 			# by removing the downloaded zipped file's folderpath
 			# and substituting `txt` with `rds`
 			# and converting the file location to lowercase
-			sfl <- gsub( "(.*)_TEXTDATA/" , catalog$output_folder , gsub( "\\.txt$" , ".rds" , fp , ignore.case = TRUE ) )
+			sfl <- gsub( "(.*)_TEXTDATA" , normalizePath( catalog$output_folder , winslash = '/' ) , gsub( "\\.txt$" , ".rds" , fp , ignore.case = TRUE ) )
 				
 			# convert all column names to lowercase
 			# in the current data.frame object `x`
@@ -146,7 +148,7 @@ lodown_seer <-
 			catalog$case_count <- max( catalog$case_count , nrow( x ) , na.rm = TRUE )
 			
 			# save the data.frame to the save-file-location
-			saveRDS( x , file = sfl )
+			saveRDS( x , file = sfl ) ; rm( x ) ; gc()
 
 			cat( paste0( data_name , " population file " , which( fp == pop_file_matches ) , " of " , length( pop_file_matches ) , " stored at '" , sfl , "'\r\n\n" ) )
 
@@ -158,6 +160,8 @@ lodown_seer <-
 
 		# delete the temporary files
 		suppressWarnings( file.remove( tf , unzipped_files ) )
+
+		on.exit()
 
 		catalog
 

@@ -53,6 +53,8 @@ get_catalog_anes <-
 lodown_anes <-
 	function( data_name = "anes" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile()
 
 		if( !( 'your_email' %in% names(list(...)) ) ) stop( "`your_email` parameter must be specified.  create an account at http://www.electionstudies.org/studypages/download/registration_form.php" )
@@ -65,13 +67,13 @@ lodown_anes <-
 		for ( i in seq_len( nrow( catalog ) ) ){
 
 			# download the file
-			this_file <- cachaca( catalog[ i , "full_url" ] , FUN = httr::GET , filesize_fun = 'httr' )
+			this_file <- cachaca( catalog[ i , "full_url" ] , FUN = httr::GET )
 
 			writeBin( this_file$content , tf ) ; rm( this_file )
 			
 			unzipped_files <- unzip_warn_fail( tf , exdir = paste0( tempdir() , "/unzips" ) )
 
-			for( stata12 in grep( "stata12" , unzipped_files , value = TRUE , ignore.case = TRUE ) ){
+			for( stata12 in grep( "stata[0-9][0-9]" , unzipped_files , value = TRUE , ignore.case = TRUE ) ){
 				
 				file.remove( stata12 )
 				
@@ -100,7 +102,7 @@ lodown_anes <-
 			# convert all column names to lowercase
 			names( x ) <- tolower( names( x ) )
 
-			saveRDS( x , file = catalog[ i , 'output_filename' ] )
+			saveRDS( x , file = catalog[ i , 'output_filename' ] , compress = FALSE )
 			
 			# add the number of records to the catalog
 			catalog[ i , 'case_count' ] <- nrow( x )
@@ -112,6 +114,8 @@ lodown_anes <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}

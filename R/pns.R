@@ -42,6 +42,8 @@ get_catalog_pns <-
 lodown_pns <-
 	function( data_name = "pns" , catalog , ... ){
 
+		on.exit( print( catalog ) )
+
 		tf <- tempfile()
 		
 		if( .Platform$OS.type != 'windows' ) {
@@ -165,8 +167,8 @@ lodown_pns <-
 			pes_sel_des_pos <- survey::postStratify( pes_sel_des , ~v00293.y , post_pop )
 
 			# save the long questionnaire survey design
-			saveRDS( pes_sel , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'long_file' ] ) )
-			saveRDS( pes_sel_des_pos , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'long_design' ] ) )
+			saveRDS( pes_sel , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'long_file' ] ) , compress = FALSE )
+			saveRDS( pes_sel_des_pos , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'long_design' ] ) , compress = FALSE )
 
 			# final design object for people answering the long questionnaire #
 			# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -196,8 +198,8 @@ lodown_pns <-
 			pes_all_des_pos <- survey::postStratify( pes_all_des , ~ v00283.y , post_pop_all )
 
 			# save the all-respondent questionnaire survey and design
-			saveRDS( x , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'all_file' ] )  )
-			saveRDS( pes_all_des_pos , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'all_design' ] )  )
+			saveRDS( x , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'all_file' ] )  , compress = FALSE )
+			saveRDS( pes_all_des_pos , file = paste0( catalog[ i , 'output_folder' ] , catalog[ i , 'all_design' ] )  , compress = FALSE )
 
 			# final design object for people answering only short or long questionnaire #
 			# # # # # # # # # # # # # # # # # 
@@ -211,6 +213,8 @@ lodown_pns <-
 
 		}
 
+		on.exit()
+		
 		catalog
 
 	}
